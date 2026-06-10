@@ -10,7 +10,6 @@ st.set_page_config(
     page_icon="🍬", layout="wide"
 )
 
-# ── Load data and model ───────────────────────────────
 @st.cache_data
 def load_data():
     df   = pd.read_csv('nassau_clean.csv')
@@ -24,10 +23,9 @@ def load_model():
     scaler   = joblib.load('scaler.pkl')
     return model, features, scaler
 
-df, recs             = load_data()
+df, recs                = load_data()
 model, features, scaler = load_model()
 
-# Encoders
 le_f = LabelEncoder().fit(df['Factory'])
 le_r = LabelEncoder().fit(df['Region'])
 le_s = LabelEncoder().fit(df['Ship Mode'])
@@ -36,7 +34,6 @@ le_d = LabelEncoder().fit(df['Division'])
 
 all_factories = sorted(df['Factory'].unique().tolist())
 
-# ── Sidebar navigation ────────────────────────────────
 st.sidebar.title("🍬 Nassau Candy")
 st.sidebar.markdown("Factory Optimization System")
 page = st.sidebar.radio("Go to", [
@@ -46,11 +43,9 @@ page = st.sidebar.radio("Go to", [
     "⚠️ Risk Panel"
 ])
 
-# ── Page 1: Factory Optimizer ─────────────────────────
 if page == "🏭 Factory Optimizer":
     st.title("🏭 Factory Optimizer")
     st.markdown("Select a product to see predicted lead time across all factories.")
-
     product  = st.selectbox("Select Product", sorted(df['Product Name'].unique()))
     prod_df  = df[df['Product Name'] == product]
     division = prod_df['Division'].iloc[0]
@@ -60,8 +55,7 @@ if page == "🏭 Factory Optimizer":
     avg_reg  = prod_df['Region'].mode()[0]
     avg_ship = prod_df['Ship Mode'].mode()[0]
     curr_fac = prod_df['Factory'].iloc[0]
-
-    results = []
+    results  = []
     for fac in all_factories:
         scaled = scaler.transform([[avg_sale, avg_cost, avg_unit]])[0]
         X = pd.DataFrame([{
@@ -80,14 +74,12 @@ if page == "🏭 Factory Optimizer":
             'Predicted Lead Time': round(pred, 1),
             'Current': 'Current' if fac == curr_fac else 'Alternative'
         })
-
     res_df = pd.DataFrame(results).sort_values('Predicted Lead Time')
     fig = px.bar(res_df, x='Predicted Lead Time', y='Factory',
                  color='Current', orientation='h',
                  color_discrete_map={'Current': '#E24B4A', 'Alternative': '#178BCA'},
                  title=f"Predicted Lead Time by Factory — {product}")
     st.plotly_chart(fig, use_container_width=True)
-
     best = res_df.iloc[0]
     if best['Factory'] != curr_fac:
         curr_lt = res_df[res_df['Factory'] == curr_fac]['Predicted Lead Time'].values[0]
@@ -96,16 +88,13 @@ if page == "🏭 Factory Optimizer":
     else:
         st.info(f"ℹ️ {product} is already in its optimal factory!")
 
-# ── Page 2: What-If Simulator ─────────────────────────
 elif page == "🔄 What-If Simulator":
     st.title("🔄 What-If Simulator")
     st.markdown("Compare current vs alternative factory for any product, region and ship mode.")
-
     col1, col2, col3 = st.columns(3)
     product  = col1.selectbox("Product",   sorted(df['Product Name'].unique()))
     region   = col2.selectbox("Region",    sorted(df['Region'].unique()))
     ship     = col3.selectbox("Ship Mode", sorted(df['Ship Mode'].unique()))
-
     prod_df  = df[df['Product Name'] == product]
     division = prod_df['Division'].iloc[0]
     curr_fac = prod_df['Factory'].iloc[0]
@@ -114,7 +103,6 @@ elif page == "🔄 What-If Simulator":
     avg_sale = prod_df['Sales'].mean()
     avg_cost = prod_df['Cost'].mean()
     avg_unit = prod_df['Units'].mean()
-
     def predict_lt(fac):
         scaled = scaler.transform([[avg_sale, avg_cost, avg_unit]])[0]
         X = pd.DataFrame([{
@@ -126,16 +114,13 @@ elif page == "🔄 What-If Simulator":
             'Sales Sc': scaled[0], 'Cost Sc': scaled[1], 'Units Sc': scaled[2]
         }])
         return round(model.predict(X)[0], 1)
-
     curr_lt = predict_lt(curr_fac)
     new_lt  = predict_lt(new_fac)
     saving  = round(curr_lt - new_lt, 1)
-
     c1, c2, c3 = st.columns(3)
     c1.metric("Current Lead Time", f"{curr_lt} days")
     c2.metric("New Lead Time",     f"{new_lt} days")
     c3.metric("Days Saved", f"{saving} days", delta=f"{saving}")
-
     fig2 = px.bar(
         pd.DataFrame({'Factory': [curr_fac, new_fac], 'Lead Time': [curr_lt, new_lt]}),
         x='Factory', y='Lead Time',
@@ -145,11 +130,9 @@ elif page == "🔄 What-If Simulator":
     fig2.update_layout(yaxis_range=[170, 185])
     st.plotly_chart(fig2, use_container_width=True)
 
-# ── Page 3: Recommendations Dashboard ────────────────
 elif page == "⭐ Recommendations":
     st.title("⭐ Recommendation Dashboard")
     st.markdown("Ranked factory reassignment recommendations — sorted by total score.")
-
     priority = st.slider("Optimization Priority — Speed vs Profit (50 = balanced)", 0, 100, 50)
     speed_w  = priority / 100
     profit_w = 1 - speed_w
@@ -157,7 +140,6 @@ elif page == "⭐ Recommendations":
     disp['Weighted Score'] = (disp['LT Score'] * speed_w +
                               disp['Margin Score'] * profit_w).round(1)
     disp = disp.sort_values('Weighted Score', ascending=False).reset_index(drop=True)
-
     st.dataframe(
         disp[['Product', 'Current Factory', 'New Factory',
               'LT Saving (days)', 'Current Margin %', 'Risk', 'Weighted Score']]
@@ -174,30 +156,24 @@ elif page == "⭐ Recommendations":
                   title="Top 10 Recommendations by Lead Time Saving")
     st.plotly_chart(fig3, use_container_width=True)
 
-# ── Page 4: Risk Panel ────────────────────────────────
 elif page == "⚠️ Risk Panel":
     st.title("⚠️ Risk & Impact Panel")
     st.markdown("Traffic light view — green = safe to reassign, red = proceed with caution.")
-
     low    = recs[recs['Risk'] == '🟢 LOW RISK']
     medium = recs[recs['Risk'] == '🟡 MEDIUM']
     high   = recs[recs['Risk'] == '🔴 HIGH RISK']
-
     c1, c2, c3 = st.columns(3)
     c1.metric("🟢 Low Risk",    len(low),    "Safe to act")
     c2.metric("🟡 Medium Risk", len(medium), "Review first")
     c3.metric("🔴 High Risk",   len(high),   "Caution")
-
     st.subheader("🟢 Low Risk Reassignments — Safe to Proceed")
     st.dataframe(low[['Product', 'Current Factory', 'New Factory',
                        'LT Saving (days)', 'Total Score']],
                  use_container_width=True)
-
     st.subheader("🟡 Medium Risk — Review Before Acting")
     st.dataframe(medium[['Product', 'Current Factory', 'New Factory',
                           'LT Saving (days)', 'Current Margin %']],
                  use_container_width=True)
-
     if len(high) > 0:
         st.subheader("🔴 High Risk — Do Not Proceed Without Further Analysis")
         st.dataframe(high[['Product', 'Current Factory', 'New Factory',
